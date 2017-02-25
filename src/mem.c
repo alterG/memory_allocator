@@ -28,8 +28,6 @@ struct mem_t * allocate_block(size_t query) {
 
 	/* allocate new block */
 	struct mem_t * new_block = mmap((char*)ptr+sizeof(struct mem_t)+(ptr->capacity), query, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-	
-	/*if (new_block == -1) return NULL;*/
 
 	/* if new block is exactly after last block */ 
 	if ((char*)new_block == (char*)ptr+sizeof(struct mem_t)+(ptr->capacity) ) {
@@ -78,19 +76,25 @@ void* _malloc (size_t query) {
 	return (void*)((char*)ptr+sizeof(struct mem_t));
 }
 
+/* Merge ptr2 with ptr1 (dont swap!) */
+
 void merge_free_blocks(struct mem_t * ptr1, struct mem_t * ptr2) {
 	(ptr1->next) = (ptr2->next);
-	ptr1->is_free = 1;
 	ptr1->capacity += sizeof(struct mem_t)+(ptr2->capacity);
 }
 
 void _free (void* mem) {
 	struct mem_t* ptr;
-	struct mem_t* buff_mem = (struct mem_t*) mem;
-	if (buff_mem->next != NULL) ptr = buff_mem->next;
-	if (ptr->is_free == 1) merge_free_blocks(ptr, buff_mem);
-	if (buff_mem != HEAP_START) ptr = mem_t_get_prev(HEAP_START, buff_mem);
-	if (ptr->is_free == 1) merge_free_blocks(buff_mem, ptr);
+	struct mem_t* buff_mem = (struct mem_t*)(mem - sizeof(struct mem_t));
+	buff_mem->is_free = 1;
+	if (buff_mem->next != NULL) {
+		ptr = buff_mem->next;
+		if (ptr->is_free == 1) merge_free_blocks(buff_mem, ptr);
+	}
+	if (buff_mem != HEAP_START) {
+		ptr = mem_t_get_prev(HEAP_START, buff_mem);
+		if (ptr->is_free == 1) merge_free_blocks(ptr, buff_mem);
+	}
 }
 
 void memalloc_debug_struct_info(FILE* f,
