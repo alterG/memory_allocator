@@ -1,10 +1,12 @@
 #include "mem.h"
 #include "mem_list.h"
+#include <sys/syscall.h>
+
 
 
 /*check div for size_t*/
 
-size_t memory_size_round (size_t memory_size) {
+static size_t memory_size_round (size_t memory_size) {
 	size_t page_size = 4096;
 	return memory_size%page_size?memory_size+(page_size-memory_size%page_size):memory_size;
 }
@@ -15,7 +17,7 @@ void* heap_init(size_t initial_size) {
 	struct mem_t* start_pointer = HEAP_START;
 	start_pointer->next = NULL;
 	start_pointer->capacity = memory_size_round(initial_size) - sizeof(struct mem_t);
-	start-pointer->is_free = 1;
+	start_pointer->is_free = 1;
 	
 	return (char*)start_pointer+sizeof(struct mem_t);	
 
@@ -27,17 +29,19 @@ struct mem_t * allocate_block(size_t query) {
 	/* allocate new block */
 	struct mem_t * new_block = mmap((char*)ptr+sizeof(struct mem_t)+(ptr->capacity), query, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	
-	if (new_block == NULL) return NULL;
+	/*if (new_block == -1) return NULL;*/
 
 	/* if new block is exactly after last block */ 
-	if (new_block == (char*)ptr+sizeof(struct mem_t)+(ptr->capacity) ) {
+	if ((char*)new_block == (char*)ptr+sizeof(struct mem_t)+(ptr->capacity) ) {
+		printf("After block");
 		ptr->capacity += memory_size_round(query);
 		return ptr;
 	}
 	/* if new space is somewhere else */
 	else {
-		ptr->next = new_block; /*ptr need to be free? */
+		printf("Somewhere block\n");
 		new_block->capacity = memory_size_round(query)-sizeof(struct mem_t);
+		mem_t_list_insert(mem_t_get_last(HEAP_START), new_block);
 		return new_block;
 	}
 }
@@ -47,7 +51,7 @@ struct mem_t * allocate_block(size_t query) {
 
 void divide_block(struct mem_t * ptr, size_t first_block_capacity) {
 	/* min size of 2nd block is its header */
-	if ( (ptr->capacity) >= sizeof(mem_t)+first_block_capacity ) {
+	if ( (ptr->capacity) >= sizeof(struct mem_t)+first_block_capacity ) {
 		struct mem_t * sliced;
 		sliced = (struct mem_t*)( (char*)ptr+sizeof(struct mem_t)+first_block_capacity );
 		sliced->capacity = (ptr->capacity)-first_block_capacity-sizeof(struct mem_t);
@@ -62,7 +66,7 @@ void* _malloc (size_t query) {
 
 	/* try to find nessesary block in heap */
 	struct mem_t * ptr = mem_t_get_valid_block(HEAP_START, query);
-	
+
 	/* if heap hasnt nessesary block try to allocate new block */
 	if (ptr == NULL) {
 		ptr = allocate_block(query);
@@ -82,22 +86,29 @@ void merge_free_blocks(struct mem_t * ptr1, struct mem_t * ptr2) {
 
 void _free (void* mem) {
 	struct mem_t* ptr;
-	mem = (struct mem_t*) mem;
-	if (mem->next != NULL) ptr = mem->next;
-	if (ptr->is_free == 1) merge_blocks(ptr, mem);
-	if (mem != HEAP_START) ptr = mem_t_get_prev(HEAP_START, mem);
-	if (ptr->is_free == 1) merge_blocks(mem, ptr);
+	struct mem_t* buff_mem = (struct mem_t*) mem;
+	if (buff_mem->next != NULL) ptr = buff_mem->next;
+	if (ptr->is_free == 1) merge_free_blocks(ptr, buff_mem);
+	if (buff_mem != HEAP_START) ptr = mem_t_get_prev(HEAP_START, buff_mem);
+	if (ptr->is_free == 1) merge_free_blocks(buff_mem, ptr);
 }
 
-void memalloc_debug_struct_info( FILE* f, struct mem_t const* const address ) {
-	size_t i;
-	fprintf( f, "start: %p\nsize: %lu\nis_free: %d\n", (void*)address, address-> capacity, address-> 	 is_free );
-	for ( i = 0; i < DEBUG_FIRST_BYTES && i < address-> capacity; ++i )
-	fprintf( f, "%hhX",	((char*)address)[ sizeof( struct mem_t ) + i ] );
-	putc( ’\n’, f );
+void memalloc_debug_struct_info(FILE* f,
+        struct mem_t const* const address){
+
+    size_t i;
+    fprintf(f, 
+            "start: %p\nsize: %lu\nis_free: %d\n",
+            (void*)address, 
+            address->capacity, 
+            address->is_free);
+        for (i = 0; i < DEBUG_FIRST_BYTES && i < address-> capacity; ++i)
+            fprintf(f, "%hhX", 
+                    ((char*)address)[sizeof(struct mem_t) +i ]);
+    putc('\n', f);
 }
 
-void memalloc_debug_heap( FILE* f, struct mem_t const* ptr ) {
-	for( ; ptr; ptr = ptr->next ) 
-	memalloc_debug_struct_info( f, ptr );
+void memalloc_debug_heap( FILE* f,  struct mem_t const* ptr ) {
+    for( ; ptr; ptr = ptr->next) 
+        memalloc_debug_struct_info(f, ptr); 
 }
