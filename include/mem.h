@@ -18,7 +18,7 @@ struct mem_t;
 struct mem_t {
 struct mem_t* next;
 size_t capacity;
-int is_free;
+int is_free; 			/* 1 - is free, 0 is employed */
 };
 
 #pragma pack(pop)

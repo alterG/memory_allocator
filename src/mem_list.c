@@ -1,4 +1,5 @@
 #include "mem.h"
+#include "mem_list.h"
 
 struct mem_t* mem_t_get_last(struct mem_t * start_pointer) {
 	for( ; start_pointer->next != NULL; start_pointer = start_pointer->next)
